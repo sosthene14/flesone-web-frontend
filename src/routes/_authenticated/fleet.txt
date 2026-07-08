@@ -1,0 +1,16 @@
+import { createFileRoute } from "@tanstack/react-router"
+import { FleetView } from "@/components/FleetView"
+import { NotificationLog } from "@/components/NotificationLog"
+
+export const Route = createFileRoute("/_authenticated/fleet")({
+  component: FleetPage,
+})
+
+function FleetPage() {
+  return (
+    <div className="flex flex-col gap-6">
+      <FleetView />
+      <NotificationLog />
+    </div>
+  )
+}
