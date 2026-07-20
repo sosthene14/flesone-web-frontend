@@ -70,8 +70,19 @@ interface UserState {
   filters: UserFilters;
   pagination: UserPagination;
   stats: UserStats | null;
-  /** Liste non paginée (ex: sélecteur de chauffeur dans un formulaire véhicule) */
-  drivers: User[];
+  /**
+   * Listes non paginées pour les sélecteurs (ex: chauffeur dans un formulaire
+   * véhicule, passagers dans une tournée), mises en cache PAR RÔLE demandé
+   * (clé "" = tous rôles confondus, voir VehiclesView). Auparavant un seul
+   * champ `drivers` partagé par tous les appelants de fetchForSelect — deux
+   * sélecteurs de rôles différents (ex: "driver" pour un véhicule, "user"
+   * pour une tournée) montés en même temps s'écrasaient l'un l'autre : le
+   * dernier fetch résolu gagnait pour TOUT le monde, ce qui pouvait afficher
+   * la liste des chauffeurs à la place de la liste des passagers (ou une
+   * liste figée le temps que le bon fetch arrive). Une clé par rôle isole
+   * chaque sélecteur.
+   */
+  selectableUsers: Record<string, User[]>;
 
   fetchAll: () => Promise<void>;
   fetchStats: () => Promise<void>;
@@ -117,7 +128,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   filters: defaultFilters,
   pagination: defaultPagination,
   stats: null,
-  drivers: [],
+  selectableUsers: {},
 
   // La pagination (page/limit) + les filtres (role/status/search) sont envoyés
   // au backend, qui renvoie uniquement la page demandée + un total global (meta).
@@ -160,13 +171,16 @@ export const useUserStore = create<UserState>((set, get) => ({
   // de la liste complète, pas d'une page — on utilise une limite haute dédiée,
   // sans toucher à `users`/`pagination` qui pilotent le tableau paginé.
   fetchForSelect: async (role) => {
+    const key = role ?? '';
     try {
       const response = await apiService.get('/users', {
         role: role || undefined,
         limit: 200,
         page: 1,
       });
-      set({ drivers: (response.data ?? []) as User[] });
+      set((state) => ({
+        selectableUsers: { ...state.selectableUsers, [key]: (response.data ?? []) as User[] },
+      }));
     } catch {
       // silencieux
     }

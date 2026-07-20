@@ -34,6 +34,18 @@ interface AuthState {
   }) => Promise<{ success: boolean; data?: any }>;
 
   login: (email: string, password: string) => Promise<{ requires2FA: boolean; data?: any }>;
+  // Connexion via "Se connecter avec Google" (dashboard web) — même forme de
+  // retour que login() (2FA gérée pareil), voir hooks/useGoogleLogin.ts et
+  // AuthService.GoogleLogin côté backend. idToken = le "credential" JWT
+  // renvoyé par Google Identity Services, pas un mot de passe. needsOrgInfo :
+  // aucun compte n'existait pour cet email — voir googleSignupToken ci-dessous
+  // et completeGoogleSignup.
+  googleLogin: (idToken: string) => Promise<{ requires2FA: boolean; needsOrgInfo?: boolean; data?: any }>;
+  // Dernière étape de l'inscription via Google (voir googleLogin ci-dessus) :
+  // crée réellement le compte + l'organisation avec le nom choisi. Lit
+  // googleSignupToken depuis le store (pas besoin que l'appelant le
+  // transmette), comme verifyTwoFA lit twoFAChallengeToken.
+  completeGoogleSignup: (orgName: string) => Promise<void>;
   logout: () => Promise<void>;
   finalizeLogin: (userData: User, access_token: string, refresh_token: string) => void;
 
@@ -41,6 +53,11 @@ interface AuthState {
   twoFAMethods: string[];
   verifyTwoFA: (code: string) => Promise<void>;
   resendTwoFACode: () => Promise<void>;
+
+  // Étape "il manque le nom de l'organisation" après un googleLogin sans
+  // compte existant — voir GoogleOrgSetupModal.
+  googleSignupToken: string | null;
+  googleSignupSuggestion: { firstName: string; lastName: string; email: string } | null;
 
   // Mot de passe oublié (dashboard web) — deux étapes indépendantes, aucune
   // des deux ne connecte l'utilisateur (voir LoginView/ResetPasswordView).
@@ -82,6 +99,8 @@ export const useAuthStore = create<AuthState>()(
       error: null,
       twoFAChallengeToken: null,
       twoFAMethods: [],
+      googleSignupToken: null,
+      googleSignupSuggestion: null,
 
       hydrate: () => {
         const access_token = tokenStorage.getAccessToken();
@@ -194,6 +213,74 @@ export const useAuthStore = create<AuthState>()(
             const { user, access_token, refresh_token } = response.data;
             get().setAuth(user, access_token, refresh_token);
             return { requires2FA: false, data: response.data };
+          }
+
+          throw new Error('Réponse inattendue du serveur');
+        } catch (error) {
+          const message = getErrorMessage(error);
+          set({ error: message, isLoading: false });
+          throw error;
+        }
+      },
+
+      googleLogin: async (idToken: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await apiService.post('/auth/google', { id_token: idToken });
+
+          if (response.success && response.data?.needsOrgInfo) {
+            set({
+              isLoading: false,
+              googleSignupToken: response.data.signup_token,
+              googleSignupSuggestion: {
+                firstName: response.data.suggested_first_name || '',
+                lastName: response.data.suggested_last_name || '',
+                email: response.data.email || '',
+              },
+            });
+            return { requires2FA: false, needsOrgInfo: true, data: response.data };
+          }
+
+          if (response.success && response.data?.requires2FA) {
+            set({
+              isLoading: false,
+              twoFAChallengeToken: response.data.challenge_token,
+              twoFAMethods: response.data.methods || [],
+            });
+            return { requires2FA: true, data: response.data };
+          }
+
+          if (response.success && response.data) {
+            const { user, access_token, refresh_token } = response.data;
+            get().setAuth(user, access_token, refresh_token);
+            return { requires2FA: false, data: response.data };
+          }
+
+          throw new Error('Réponse inattendue du serveur');
+        } catch (error) {
+          const message = getErrorMessage(error);
+          set({ error: message, isLoading: false });
+          throw error;
+        }
+      },
+
+      completeGoogleSignup: async (orgName: string) => {
+        const signupToken = get().googleSignupToken;
+        if (!signupToken) {
+          throw new Error("Session d'inscription Google expirée, reconnectez-vous avec Google.");
+        }
+        set({ isLoading: true, error: null });
+        try {
+          const response = await apiService.post('/auth/google/complete-signup', {
+            signup_token: signupToken,
+            org_name: orgName,
+          });
+
+          if (response.success && response.data) {
+            const { user, access_token, refresh_token } = response.data;
+            get().setAuth(user, access_token, refresh_token);
+            set({ googleSignupToken: null, googleSignupSuggestion: null });
+            return;
           }
 
           throw new Error('Réponse inattendue du serveur');

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Edit, Trash2, Search } from "lucide-react";
+import { Plus, Edit, Trash2, Search, CalendarCheck, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -147,6 +147,7 @@ export function LinesView() {
             <TableRow>
               <TableHead>Nom</TableHead>
               <TableHead>Statut</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Zones</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Créée le</TableHead>
@@ -160,6 +161,7 @@ export function LinesView() {
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-40" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-20" /></TableCell>
@@ -168,7 +170,7 @@ export function LinesView() {
               ))
             ) : filteredLines.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   Aucune ligne configurée.
                 </TableCell>
               </TableRow>
@@ -193,6 +195,19 @@ export function LinesView() {
                       />
                       {line.status === "active" ? "Active" : line.status === "inactive" ? "Inactive" : "Archivée"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {line.open_for_reservation ? (
+                      <Badge variant="success">
+                        <CalendarCheck className="h-3 w-3" />
+                        Réservable
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground">
+                        <Ban className="h-3 w-3" />
+                        Non réservable
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="max-w-[220px]">
                     {line.zones && line.zones.length > 0 ? (

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { Label } from "@/components/ui/label";
-import { CalendarClock, Clock, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { CalendarClock, ChevronRight, Clock, GripVertical, MapPin, Plus, Trash2, X } from "lucide-react";
 import { useVehicleStore } from "@/store/useVehicleStore";
 import { useLineStore } from "@/store/useLineStore";
 import { useUserStore } from "@/store/userStore";
@@ -70,7 +70,8 @@ export function TripScheduleFormDialog({
   // fetchForSelect('user') charge la liste complète (non paginée) des
   // passagers (rôle "user") de l'organisation, pour le sélecteur ci-dessous —
   // voir GET /users?role=user côté backend.
-  const { drivers: selectablePassengers, fetchForSelect: fetchPassengers } = useUserStore();
+  const { selectableUsers, fetchForSelect: fetchPassengers } = useUserStore();
+  const selectablePassengers = selectableUsers["user"] ?? [];
 
   const [vehicleId, setVehicleId] = useState("");
   const [tripType, setTripType] = useState<ScheduleTripType>("zone");
@@ -103,6 +104,8 @@ export function TripScheduleFormDialog({
       setError("");
     }
   }, [open, defaultDate]);
+
+  const selectedLine = lines.find((l) => l.id === lineId);
 
   const togglePassenger = (userId: string) => {
     setPassengerIds((prev) =>
@@ -252,6 +255,28 @@ export function TripScheduleFormDialog({
                     searchPlaceholder="Rechercher une ligne..."
                     options={lines.map((l) => ({ value: l.id, label: l.name }))}
                   />
+
+                  {lineId && (
+                    <div className="rounded-md border border-border bg-background p-2.5">
+                      {selectedLine && selectedLine.zones && selectedLine.zones.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {selectedLine.zones.map((zone, index) => (
+                            <div key={zone.id} className="flex items-center gap-1">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-md text-text-secondary">
+                                <MapPin className="h-3 w-3 text-text-muted" />
+                                {zone.name}
+                              </span>
+                              {index < selectedLine.zones.length - 1 && (
+                                <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text-muted">Cette ligne n'a aucun arrêt configuré.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

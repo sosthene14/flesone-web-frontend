@@ -13,7 +13,7 @@ interface Stat {
 
 export function StatCards() {
   const { dashboardStats } = useStatsStore()
-  const { alerts } = useAlertStore()
+  const { stats: alertStats } = useAlertStore()
 
   const stats: Stat[] = [
     {
@@ -36,7 +36,7 @@ export function StatCards() {
     },
     {
       label: "Alertes ouvertes",
-      value: alerts?.filter((a) => a.status === "open").length.toString(),
+      value: (alertStats?.open ?? 0).toString(),
       sub: "Aucune alerte",
       icon: AlertTriangle,
       flag: true,

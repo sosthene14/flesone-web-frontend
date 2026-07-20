@@ -7,7 +7,7 @@
 // depuis le navigateur de l'admin (pas juste depuis le LAN des chauffeurs).
 import axios from 'axios';
 
-const OSRM_BASE_URL = import.meta.env.VITE_OSRM_URL || 'http://192.168.1.30:5000';
+const OSRM_BASE_URL = import.meta.env.VITE_OSRM_URL || 'http://192.168.1.4:5000';
 
 export const osrmClient = axios.create({
   baseURL: OSRM_BASE_URL,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AlertSeverity, AlertStatus } from "@/store/useAlertStore";
-import { SEVERITY_OPTIONS, STATUS_OPTIONS } from "./alertConfig";
+import { SEVERITY_OPTIONS, STATUS_OPTIONS, ORDER_OPTIONS } from "./alertConfig";
 
 interface AlertsToolbarProps {
   count: number;
@@ -9,18 +9,29 @@ interface AlertsToolbarProps {
   onStatusChange: (status: AlertStatus | "") => void;
   severity: AlertSeverity | "";
   onSeverityChange: (severity: AlertSeverity | "") => void;
+  order: "asc" | "desc";
+  onOrderChange: (order: "asc" | "desc") => void;
 }
 
-export function AlertsToolbar({ count, status, onStatusChange, severity, onSeverityChange }: AlertsToolbarProps) {
+export function AlertsToolbar({
+  count,
+  status,
+  onStatusChange,
+  severity,
+  onSeverityChange,
+  order,
+  onOrderChange,
+}: AlertsToolbarProps) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [severityOpen, setSeverityOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-3 border-b border-border px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 className="text-sm font-semibold text-text-primary">Alertes</h2>
         <p className="text-md text-text-muted mt-0.5">
-          {count} alerte{count !== 1 ? "s" : ""} affichée{count !== 1 ? "s" : ""}
+          {count} alerte{count !== 1 ? "s" : ""} au total
         </p>
       </div>
 
@@ -77,6 +88,29 @@ export function AlertsToolbar({ count, status, onStatusChange, severity, onSever
                   className={`flex w-full px-3 py-2 text-[12px] hover:bg-[#f5f5f5] ${severity === s.value ? "font-semibold text-text-primary" : "text-text-secondary"}`}
                 >
                   {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setOrderOpen((p) => !p)}
+            className="flex items-center gap-1.5 rounded-[6px] border border-border px-3 py-1.5 text-[12px] text-text-secondary hover:bg-[#f5f5f5] transition-colors"
+          >
+            {ORDER_OPTIONS.find((o) => o.value === order)?.label}
+            <ChevronDown className="h-3 w-3 text-text-muted" />
+          </button>
+          {orderOpen && (
+            <div className="absolute right-0 top-full z-10 mt-1 w-52 rounded-[6px] border border-border bg-card shadow-lg py-1">
+              {ORDER_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => { onOrderChange(o.value); setOrderOpen(false); }}
+                  className={`flex w-full px-3 py-2 text-[12px] hover:bg-[#f5f5f5] ${order === o.value ? "font-semibold text-text-primary" : "text-text-secondary"}`}
+                >
+                  {o.label}
                 </button>
               ))}
             </div>

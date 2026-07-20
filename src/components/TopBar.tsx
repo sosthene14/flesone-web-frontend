@@ -22,11 +22,12 @@ export function TopBar({ title, subtitle, onMenuClick, onNavigate }: TopBarProps
   const vehicles = useVehicleStore((s) => s.vehicles)
   const setVehicleFilters = useVehicleStore((s) => s.setFilters)
 
-  const { alerts } = useAlertStore()
-  const openAlertsCount = alerts.filter((a) => a.status === "open").length
-  const recentAlerts = [...alerts]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 6)
+  const { recentAlerts: recent, stats } = useAlertStore()
+  const openAlertsCount = stats?.open ?? 0
+  // recentAlerts vient déjà trié (le plus récent d'abord) et non filtré côté
+  // serveur (voir useAlertStore.fetchRecent) — indépendant de ce que l'admin
+  // regarde/filtre sur la page /alerts.
+  const recentAlerts = recent.slice(0, 6)
 
   const matches = search.trim()
     ? vehicles

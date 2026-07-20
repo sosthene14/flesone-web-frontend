@@ -15,12 +15,13 @@ interface NotificationLogProps {
 // globalement (useFetchDatas au login) ou par la vue parente qui monte ce
 // composant (AlertsPanel, FleetView, ...). On ne fait que lire le store.
 export function NotificationLog({ limit = 8 }: NotificationLogProps) {
-  const { alerts, isLoading } = useAlertStore();
+  // recentAlerts : flux non filtré/non paginé (voir useAlertStore.fetchRecent),
+  // déjà trié le plus récent d'abord côté serveur — indépendant de ce que
+  // l'admin regarde sur la page /alerts.
+  const { recentAlerts, isLoadingRecent: isLoading } = useAlertStore();
   const { vehicles } = useVehicleStore();
 
-  const items = [...alerts]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, limit);
+  const items = recentAlerts.slice(0, limit);
 
   const vehiclePlate = (vehicleId?: string | null) =>
     vehicleId ? vehicles.find((v) => v.id === vehicleId)?.plate : undefined;

@@ -20,6 +20,26 @@ export interface TripZone {
   arrived_at?: string | null;
 }
 
+// Un passager nommé embarqué sur un trajet trip_type="users" (porte-à-porte)
+// — équivalent de TripZone pour ce type de trajet.
+export interface TripPassenger {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  status: 'pending' | 'picked_up' | 'absent';
+  picked_up_at?: string | null;
+  has_shared_location: boolean;
+  // Position "maison" fixe définie par le passager lui-même (voir POST
+  // /me/home-location côté mobile) — pas une position GPS relevée AU MOMENT
+  // de l'embarquement (le backend n'a pas cette donnée-là), mais c'est la
+  // seule localisation disponible pour ce passager.
+  home_latitude?: number | null;
+  home_longitude?: number | null;
+  home_address?: string | null;
+}
+
 export interface LineStop {
   id: string;
   name: string;
@@ -78,6 +98,8 @@ export interface Trip {
   // s'appuie sur ce champ pour savoir lequel des deux cas c'est).
   cancelled_by?: string | null;
   zones?: TripZone[];
+  // Rempli uniquement pour trip_type="users" — voir TripPassenger.
+  passengers?: TripPassenger[];
   // Champs d'affichage dénormalisés renvoyés par le backend
   line_name?: string;
   vehicle_plate?: string;
@@ -200,7 +222,11 @@ export const useTripStore = create<TripState>((set, get) => ({
   listTrips: [],
   listLoading: false,
   listError: null,
-  listFilters: { status: '', vehicle_id: '', line_id: '', from: '', to: '', order: 'desc' },
+  // 'asc' par défaut : la tournée la plus proche (aujourd'hui) doit apparaître
+  // en premier, pas la plus lointaine dans le futur — 'desc' donnait
+  // l'impression trompeuse que les tournées d'août passaient avant celles de
+  // juillet alors qu'on est en juillet.
+  listFilters: { status: '', vehicle_id: '', line_id: '', from: '', to: '', order: 'asc' },
   listPagination: { page: 1, limit: 20, total: 0, total_pages: 1 },
 
   fetchTripsList: async (page) => {

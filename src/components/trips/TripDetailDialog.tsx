@@ -1,6 +1,6 @@
 import { Bus, Calendar, CircleDot, Clock, MapPin, User, Users } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Trip, TripStatus, TripZone } from "@/store/useTripStore"
+import { Trip, TripPassenger, TripStatus, TripZone } from "@/store/useTripStore"
 
 interface TripDetailDialogProps {
   trip: Trip | null
@@ -11,7 +11,7 @@ interface TripDetailDialogProps {
 const STATUS_COLOR: Record<TripStatus, string> = {
   pending: "var(--color-brand, #6A0DAD)",
   ongoing: "#16A34A",
-  completed: "#9CA3AF",
+  completed: "#16A34A",
   cancelled: "#DC2626",
 }
 
@@ -34,6 +34,18 @@ const ZONE_STATUS_COLOR: Record<TripZone["status"], string> = {
   pending: "#9CA3AF",
 }
 
+const PASSENGER_STATUS_LABEL: Record<TripPassenger["status"], string> = {
+  picked_up: "Pris en charge",
+  pending: "En attente",
+  absent: "Absent",
+}
+
+const PASSENGER_STATUS_COLOR: Record<TripPassenger["status"], string> = {
+  picked_up: "#16A34A",
+  pending: "#9CA3AF",
+  absent: "#DC2626",
+}
+
 function formatDateTime(iso?: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleString("fr-FR", {
@@ -43,6 +55,13 @@ function formatDateTime(iso?: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+// Heure seule (le jour est déjà connu, c'est celui du trip affiché) — évite
+// de répéter la date complète sur chaque ligne passager.
+function formatTime(iso?: string | null): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
 }
 
 // "1h 25min" / "12min" — jamais de secondes, pas utile à cette échelle.
@@ -113,9 +132,9 @@ export function TripDetailDialog({ trip, open, onOpenChange }: TripDetailDialogP
   const arrGap = arrivalGap(trip)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+    <Dialog open={open}  onOpenChange={onOpenChange}>
+      <DialogContent  className="sm:max-w-2xl" showCloseButton={false}>
+        <DialogHeader >
           <DialogTitle className="flex items-center gap-2">
             <span
               className="inline-block h-2.5 w-2.5 rounded-full"
@@ -209,6 +228,55 @@ export function TripDetailDialog({ trip, open, onOpenChange }: TripDetailDialogP
                     <span className="whitespace-nowrap text-[11px] text-text-muted">{zone.passenger_count} pax</span>
                   </div>
                 ))}
+            </div>
+          </div>
+        )}
+
+        {trip.trip_type === "users" && trip.passengers && trip.passengers.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-text-muted">
+              <Users className="h-3.5 w-3.5" />
+              Passagers ({trip.passengers.length})
+            </p>
+            <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+              {trip.passengers.map((passenger) => (
+                <div
+                  key={passenger.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <CircleDot
+                      className="h-3.5 w-3.5 shrink-0"
+                      style={{ color: PASSENGER_STATUS_COLOR[passenger.status] }}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary">
+                        {passenger.first_name} {passenger.last_name}
+                      </p>
+                      {/* Position "maison" fixée par le passager (voir
+                          home_address côté backend) — pas la position GPS
+                          exacte au moment de l'embarquement, cette donnée
+                          n'existe pas côté serveur, mais c'est la seule
+                          localisation disponible pour ce passager. */}
+                      {passenger.home_address && (
+                        <p className="truncate text-[11px] text-text-muted">
+                          {passenger.home_address}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="whitespace-nowrap text-[11px] text-text-muted">
+                      {PASSENGER_STATUS_LABEL[passenger.status]}
+                    </span>
+                    {passenger.status === "picked_up" && passenger.picked_up_at && (
+                      <span className="whitespace-nowrap text-[11px] font-medium text-text-primary">
+                        {formatTime(passenger.picked_up_at)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

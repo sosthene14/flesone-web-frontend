@@ -68,6 +68,13 @@ export function ZoneFormDialog({ open, onOpenChange, initialData, onSuccess }: Z
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  // Garde synchrone contre la double soumission (double-clic, ou touche
+  // Entrée + clic quasi simultanés) : `isLoading` du store ne se reflète sur
+  // le bouton qu'après le prochain rendu React, ce qui laisse une fenêtre où
+  // un second clic peut relancer handleSubmit avant que le bouton ne soit
+  // effectivement désactivé — bug signalé : plusieurs zones identiques
+  // créées d'affilée depuis ce formulaire.
+  const isSubmittingRef = useRef(false);
 
   // Reverse-geocoding : quand on clique sur la carte, on retrouve l'adresse
   // correspondant aux coordonnées via Nominatim pour remplir le champ recherche.
@@ -258,6 +265,7 @@ export function ZoneFormDialog({ open, onOpenChange, initialData, onSuccess }: Z
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     setError("");
 
     if (!name.trim()) return setError("Le nom est requis");
@@ -272,6 +280,7 @@ export function ZoneFormDialog({ open, onOpenChange, initialData, onSuccess }: Z
       address: searchQuery.trim() || undefined,
     };
 
+    isSubmittingRef.current = true;
     try {
       if (isEditing && initialData) {
         await updateZone(initialData.id, payload);
@@ -281,6 +290,8 @@ export function ZoneFormDialog({ open, onOpenChange, initialData, onSuccess }: Z
       onSuccess?.();
     } catch {
       //
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

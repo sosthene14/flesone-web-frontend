@@ -19,7 +19,7 @@ import { TripDetailDialog } from "./TripDetailDialog"
 const STATUS_COLOR: Record<string, string> = {
   pending: "var(--color-brand, #6A0DAD)",
   ongoing: "#16A34A",
-  completed: "#9CA3AF",
+  completed: "#16A34A",
   cancelled: "#DC2626",
   // Même orange que le badge "Retard" (is_delayed) — pas une vraie annulation,
   // juste jamais démarrée : on la distingue du rouge "cancelled".

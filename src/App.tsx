@@ -12,7 +12,6 @@ import { LiveTrackingMap } from "./components/live-tracking/LiveTrackingMap"
 import { UsersView } from "./components/UsersView"
 import { VehiclesView } from "./components/VehiclesView"
 import { OrganizationsView } from "./components/OrganizationsView"
-import ToastContainer, { Toaster } from "react-hot-toast"
 import { LoginView } from "./components/auth/LoginView"
 import { RegisterView } from "./components/auth/RegisterView"
 import { useAuthStore } from "./store/useAuthStore"
@@ -52,8 +51,7 @@ export default function App() {
 
   return (
     <>
-      <Toaster position="top-right" />
-
+ 
       {!isAuthenticated ? (
         authView === "login" ? (
           <LoginView onNavigateToRegister={() => setAuthView("register")} />

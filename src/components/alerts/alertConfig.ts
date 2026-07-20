@@ -18,6 +18,12 @@ export const STATUS_OPTIONS = [
   { value: "resolved" as const, label: "Résolue" },
 ];
 
+// Tri par date (created_at) — même formulation que TripsListView.
+export const ORDER_OPTIONS: { value: "asc" | "desc"; label: string }[] = [
+  { value: "desc", label: "Plus récentes d'abord" },
+  { value: "asc", label: "Plus anciennes d'abord" },
+];
+
 export function iconFor(alert: Alert) {
   const msg = alert.message.toLowerCase();
   if (msg.includes("gps") || alert.type === "gps") return WifiOff;

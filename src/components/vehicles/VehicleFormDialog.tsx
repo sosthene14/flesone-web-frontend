@@ -25,7 +25,8 @@ interface VehicleFormDialogProps {
 
 export function VehicleFormDialog({ open, onOpenChange, initialData, onSuccess }: VehicleFormDialogProps) {
   const { createVehicle, updateVehicle, isLoading } = useVehicleStore();
-  const { drivers: users, fetchForSelect } = useUserStore();
+  const { selectableUsers, fetchForSelect } = useUserStore();
+  const users = selectableUsers["driver"] ?? [];
   const isEditing = !!initialData;
 
   const [plate, setPlate] = useState("");

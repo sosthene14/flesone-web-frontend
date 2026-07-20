@@ -4,24 +4,21 @@ import { useVehicleStore } from "@/store/useVehicleStore";
 import { SEVERITY_STYLE, iconFor, formatTime } from "./alerts/alertConfig";
 
 export function AlertsPanel({ full = false }: { full?: boolean }) {
-  const { alerts, filteredAlerts, isLoading, error, filters } = useAlertStore();
+  // recentAlerts : flux non filtré/non paginé (voir useAlertStore.fetchRecent),
+  // indépendant de la page/des filtres du tableau de /alerts — ce panneau
+  // n'est qu'un aperçu des alertes les plus récentes.
+  const { recentAlerts, isLoadingRecent, error, stats } = useAlertStore();
   const vehicles = useVehicleStore((s) => s.vehicles);
 
   const vehiclePlate = (vehicleId?: string | null) =>
     vehicleId ? vehicles.find((v) => v.id === vehicleId)?.plate ?? "Véhicule inconnu" : null;
 
   // Sélection des alertes à afficher : toutes ou les 4 premières (selon full)
-  const displayedAlerts = full
-    ? (filters.status || filters.severity || filters.vehicle_id
-        ? filteredAlerts
-        : alerts)
-    : (filters.status || filters.severity || filters.vehicle_id
-        ? filteredAlerts.slice(0, 4)
-        : alerts.slice(0, 4));
+  const displayedAlerts = full ? recentAlerts : recentAlerts.slice(0, 4);
 
-  const activeCount = alerts.filter((a) => a.status === "open").length;
+  const activeCount = stats?.open ?? 0;
 
-  if (isLoading) {
+  if (isLoadingRecent) {
     return (
       <div className="rounded-[8px] border border-border bg-card p-8 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-text-muted" />

@@ -51,6 +51,7 @@ class ApiService {
           '/auth/forgot-password',
           '/auth/reset-password',
           '/auth/2fa/verify',
+          '/auth/google',
         ];
         const isPublicAuthRoute = PUBLIC_AUTH_ROUTES.some(route => originalRequest.url?.includes(route));
         const isRefreshTokenRoute = originalRequest.url?.includes('/auth/refresh-token');

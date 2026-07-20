@@ -13,13 +13,8 @@ interface VehiclesTableRowProps {
 export function VehiclesTableRow({ vehicle, onEdit, onDelete }: VehiclesTableRowProps) {
   const sc = VEHICLE_STATUS_CONFIG[vehicle.status];
   
-  const {users} = useUserStore()
-
-  console.log(users)
-
   const assignedDriver = useUserStore((s) =>
-   
-    s.drivers.find((u) => u.vehicle_id === vehicle.id)
+    (s.selectableUsers[''] ?? []).find((u) => u.vehicle_id === vehicle.id)
   );
   const driverName = assignedDriver
     ? `${assignedDriver.first_name} ${assignedDriver.last_name}`

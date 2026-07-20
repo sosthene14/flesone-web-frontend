@@ -1,21 +1,24 @@
 import { AlertTriangle, AlertOctagon, CheckCircle2, Bell } from "lucide-react";
-import type { Alert } from "@/store/useAlertStore";
+import type { AlertStats } from "@/store/useAlertStore";
 
 interface AlertsStatsCardsProps {
-  alerts: Alert[];
+  stats: AlertStats | null;
 }
 
-export function AlertsStatsCards({ alerts }: AlertsStatsCardsProps) {
-  const stats = [
-    { label: "Total", value: alerts.length, icon: Bell },
-    { label: "Ouvertes", value: alerts.filter((a) => a.status === "open").length, icon: AlertTriangle },
-    { label: "Critiques", value: alerts.filter((a) => a.severity === "critical" && a.status === "open").length, icon: AlertOctagon },
-    { label: "Résolues", value: alerts.filter((a) => a.status === "resolved").length, icon: CheckCircle2 },
+// Compteurs venus de GET /alerts/stats (organisation entière) plutôt que
+// calculés depuis la liste affichée : depuis que /alerts est paginé, `alerts`
+// ne contient plus qu'une page et ne peut plus servir à compter le total.
+export function AlertsStatsCards({ stats }: AlertsStatsCardsProps) {
+  const cards = [
+    { label: "Total", value: stats?.total ?? 0, icon: Bell },
+    { label: "Ouvertes", value: stats?.open ?? 0, icon: AlertTriangle },
+    { label: "Critiques", value: stats?.critical_open ?? 0, icon: AlertOctagon },
+    { label: "Résolues", value: stats?.resolved ?? 0, icon: CheckCircle2 },
   ];
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-      {stats.map((s) => {
+      {cards.map((s) => {
         const Icon = s.icon;
         return (
           <div key={s.label} className="rounded-[8px] border border-border bg-card p-5">

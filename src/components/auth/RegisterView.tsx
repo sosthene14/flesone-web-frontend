@@ -1,7 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Mail, Lock, Eye, EyeOff, User, ArrowLeft, Building2 } from "lucide-react"
 import { useAuthStore } from "@/store/useAuthStore"
-import { Toaster } from "react-hot-toast"
+import { useGoogleLogin } from "@/hooks/useGoogleLogin"
+import { GoogleOrgSetupModal } from "@/components/auth/GoogleOrgSetupModal"
+import toast, { Toaster } from "react-hot-toast"
 import { fieldCls, inputCls, labelCls } from "@/utils/constants"
 import { RequiredStar } from "@/components/ui/RequiredStar"
 
@@ -21,6 +23,33 @@ export function RegisterView({ onNavigateToLogin }: RegisterViewProps) {
   const [error, setError] = useState("")
   const { register, isLoading } = useAuthStore()
 
+  const [googleOrgModalOpen, setGoogleOrgModalOpen] = useState(false)
+  const [googleSuggestion, setGoogleSuggestion] = useState<{ firstName: string; lastName: string; email: string } | null>(null)
+
+  // Le formulaire "Créer un compte" n'a pas d'étape 2FA : si l'adresse Google
+  // correspond à un compte existant qui a la 2FA active, il n'y a rien à
+  // vérifier ici (register n'est pas prévu pour ça) — on renvoie simplement
+  // l'utilisateur vers /login, où LoginView sait gérer cette étape. En
+  // revanche, si AUCUN compte n'existe (cas normal de "Créer un compte"), on
+  // demande le nom d'organisation via GoogleOrgSetupModal — même flux que
+  // depuis LoginView.
+  const { signInWithGoogle, isGoogleLoading, googleError } = useGoogleLogin({
+    onRequires2FA: () => {
+      // toast plutôt que setError : RegisterView est démonté juste après par
+      // onNavigateToLogin, un message dans le state local n'aurait pas le
+      // temps de s'afficher.
+      toast.error("Un compte existe déjà avec cette adresse Google et a la vérification en deux étapes activée. Reconnectez-vous depuis la page de connexion.", { duration: 6000 })
+      onNavigateToLogin()
+    },
+    onNeedsOrgInfo: (suggestion) => {
+      setGoogleSuggestion(suggestion)
+      setGoogleOrgModalOpen(true)
+    },
+  })
+
+  useEffect(() => {
+    if (googleError) setError(googleError)
+  }, [googleError])
 
   const buildFallbackOrganizationName = () => {
     const base = [firstName, lastName].filter(Boolean).join(" ").trim()
@@ -59,6 +88,7 @@ export function RegisterView({ onNavigateToLogin }: RegisterViewProps) {
   }
 
   return (
+    <>
     <div className="flex min-h-screen bg-background">
 
       {/* Left panel: High-quality Unsplash Transit Image with Glassmorphism Overlay */}
@@ -118,10 +148,12 @@ export function RegisterView({ onNavigateToLogin }: RegisterViewProps) {
           )}
 
           {/* Social sign-in */}
-          <div className="mb-5 grid grid-cols-2 gap-3">
+          <div className="mb-5 grid grid-cols-1 gap-3">
             <button
               type="button"
-              className="flex items-center justify-center gap-2 rounded-[6px] border border-border bg-white py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-[#f5f5f5] cursor-pointer"
+              onClick={signInWithGoogle}
+              disabled={isGoogleLoading}
+              className="flex items-center justify-center gap-2 rounded-[6px] border border-border bg-white py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-[#f5f5f5] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47c-.28 1.5-1.13 2.78-2.4 3.63v3.02h3.89c2.28-2.1 3.56-5.19 3.56-8.84z" />
@@ -129,17 +161,9 @@ export function RegisterView({ onNavigateToLogin }: RegisterViewProps) {
                 <path fill="#FBBC05" d="M5.33 14.33c-.24-.72-.38-1.49-.38-2.28s.14-1.56.38-2.28V6.68H1.3A11.97 11.97 0 0 0 0 12.05c0 1.94.46 3.77 1.3 5.37l4.03-3.09z" />
                 <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.58 1.8l3.44-3.44C17.94 1.19 15.24 0 12 0 7.31 0 3.27 2.7 1.3 6.68l4.03 3.09c.94-2.81 3.57-4.9 6.67-4.9z" />
               </svg>
-              Google
+              {isGoogleLoading ? "Connexion..." : "Google"}
             </button>
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 rounded-[6px] border border-border bg-white py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-[#f5f5f5] cursor-pointer"
-            >
-              <svg className="h-4 w-4 text-text-primary" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16.36 1.43c0 1.14-.42 2.2-1.24 3.05-.87.9-2.15 1.6-3.29 1.5-.15-1.1.42-2.28 1.19-3.03C13.85.99 15.2.3 16.36 1.43zM20.5 17.2c-.5 1.12-.74 1.62-1.38 2.62-.9 1.4-2.17 3.15-3.74 3.16-1.4.02-1.76-.9-3.66-.9-1.9 0-2.3.88-3.7.92-1.57.05-2.76-1.5-3.67-2.9C2.44 17.2 1.5 13.2 3.13 10.5c.83-1.35 2.31-2.2 3.92-2.22 1.44-.03 2.8.97 3.68.97.88 0 2.54-1.2 4.28-1.02.73.03 2.78.3 4.1 2.22-.11.07-2.45 1.43-2.42 4.27.03 3.4 2.98 4.53 3.01 4.55-.02.08-.47 1.6-1.2 2.93z" />
-              </svg>
-              Apple
-            </button>
+
           </div>
 
           <div className="mb-5 flex items-center gap-3">
@@ -294,5 +318,11 @@ export function RegisterView({ onNavigateToLogin }: RegisterViewProps) {
         </div>
       </div>
     </div>
+    <GoogleOrgSetupModal
+      open={googleOrgModalOpen}
+      suggestion={googleSuggestion}
+      onOpenChange={setGoogleOrgModalOpen}
+    />
+    </>
   )
 }

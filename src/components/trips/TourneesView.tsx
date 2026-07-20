@@ -5,7 +5,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import frLocale from "@fullcalendar/core/locales/fr";
 import type { EventClickArg, DateSelectArg, DatesSetArg } from "@fullcalendar/core";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, CircleDot, Loader2, MapPin, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,7 +31,7 @@ import { TripScheduleFormDialog } from "./TripScheduleFormDialog";
 const STATUS_COLOR: Record<string, string> = {
   pending: "var(--color-brand, #6A0DAD)",
   ongoing: "#16A34A",
-  completed: "#9CA3AF",
+  completed: "#16A34A",
   cancelled: "#DC2626",
   // Même orange que le badge "Retard" ailleurs dans l'app — distinct du rouge
   // "cancelled" (une tournée manquée n'a jamais été annulée volontairement).
@@ -46,8 +46,41 @@ const STATUS_LABEL: Record<string, string> = {
   missed: "Manquée",
 };
 
+// Même mapping que TripDetailDialog.tsx pour la liste des arrêts.
+const ZONE_STATUS_LABEL: Record<string, string> = {
+  done: "Atteint",
+  current: "En cours",
+  pending: "À venir",
+};
+
+const ZONE_STATUS_COLOR: Record<string, string> = {
+  done: "#16A34A",
+  current: "var(--color-brand, #6A0DAD)",
+  pending: "#9CA3AF",
+};
+
+// Même mapping que TripDetailDialog.tsx pour la liste des passagers
+// (trajets "porte-à-porte", trip_type="users").
+const PASSENGER_STATUS_LABEL: Record<string, string> = {
+  picked_up: "Pris en charge",
+  pending: "En attente",
+  absent: "Absent",
+};
+
+const PASSENGER_STATUS_COLOR: Record<string, string> = {
+  picked_up: "#16A34A",
+  pending: "#9CA3AF",
+  absent: "#DC2626",
+};
+
 function toDateInputValue(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+// Heure seule (le jour est déjà connu, c'est celui du trip affiché).
+function formatTime(iso?: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function startOfToday(): Date {
@@ -65,7 +98,7 @@ function toDateTimeLocalValue(iso: string): string {
 }
 
 export function TourneesView() {
-  const { calendarTrips, isCalendarLoading, fetchCalendar, deleteTrip, updateTrip } = useTripStore();
+  const { calendarTrips, isCalendarLoading, fetchCalendar, deleteTrip, updateTrip, fetchById, currentTrip } = useTripStore();
   const { updateSchedule, deleteSchedule, countPendingTrips } = useTripScheduleStore();
   const { vehicles, fetchAll: fetchVehicles } = useVehicleStore();
 
@@ -143,6 +176,16 @@ export function TourneesView() {
     [calendarTrips]
   );
 
+  // L'itinéraire planifié (Line.Zones) n'est pas inclus dans les trajets du
+  // calendrier (fetchCalendar), seulement dans le détail complet d'un trajet
+  // (GET /trips/:id, voir TripService.GetTrip) — sans quoi une tournée pas
+  // encore démarrée n'affichait aucun arrêt (selectedTrip.zones ne contient
+  // que la PROGRESSION réelle, créée au fur et à mesure que le chauffeur
+  // arrive à chaque arrêt, donc vide tant que rien n'a démarré). On complète
+  // donc silencieusement en tâche de fond dès qu'une tournée est sélectionnée.
+  const selectedTripStops =
+    currentTrip && selectedTrip && currentTrip.id === selectedTrip.id ? currentTrip.line?.stops : undefined;
+
   const handleEventClick = (arg: EventClickArg) => {
     const trip = arg.event.extendedProps.trip as Trip;
     setSelectedTrip(trip);
@@ -152,6 +195,7 @@ export function TourneesView() {
     setSlotEnd(trip.scheduled_end_at ? toDateTimeLocalValue(trip.scheduled_end_at) : "");
     setSlotVehicleId(trip.vehicle_id);
     setSlotLabel(trip.schedule_slot_label || "");
+    fetchById(trip.id);
   };
 
   const handleSaveSlot = async () => {
@@ -293,6 +337,7 @@ export function TourneesView() {
     setSlotEnd(trip.scheduled_end_at ? toDateTimeLocalValue(trip.scheduled_end_at) : "");
     setSlotVehicleId(trip.vehicle_id);
     setSlotLabel(trip.schedule_slot_label || "");
+    fetchById(trip.id);
   };
 
   const tripDetailTitle = selectedTrip
@@ -358,6 +403,115 @@ export function TourneesView() {
               <span className="text-text-muted">Statut</span>
               <span className="font-medium text-text-primary">{STATUS_LABEL[selectedTrip.status]}</span>
             </div>
+
+            {selectedTrip.zones && selectedTrip.zones.length > 0 && (
+              <div className="border-t border-border pt-2 mt-1">
+                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                  <MapPin className="h-3.5 w-3.5" />
+                  Arrêts ({selectedTrip.zones.length})
+                </p>
+                <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                  {selectedTrip.zones
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                    .map((zone) => (
+                      <div
+                        key={zone.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <CircleDot className="h-3.5 w-3.5 shrink-0" style={{ color: ZONE_STATUS_COLOR[zone.status] }} />
+                          <div>
+                            <p className="text-sm text-text-primary">{zone.name}</p>
+                            <p className="text-[11px] text-text-muted">
+                              {ZONE_STATUS_LABEL[zone.status]}
+                              {zone.arrived_at ? ` · ${zone.arrived_at}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="whitespace-nowrap text-[11px] text-text-muted">{zone.passenger_count} pax</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tant que la tournée n'a pas démarré (aucune progression réelle
+                encore enregistrée), on affiche au moins l'itinéraire prévu de
+                la ligne — sinon le détail semblait vide pour toute tournée
+                "Planifiée" alors que la ligne a bien des arrêts configurés. */}
+            {(!selectedTrip.zones || selectedTrip.zones.length === 0) &&
+              selectedTripStops &&
+              selectedTripStops.length > 0 && (
+                <div className="border-t border-border pt-2 mt-1">
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Itinéraire prévu ({selectedTripStops.length})
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {selectedTripStops
+                      .slice()
+                      .sort((a, b) => a.order - b.order)
+                      .map((stop, index, arr) => (
+                        <div key={stop.id} className="flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-md text-text-secondary">
+                            <MapPin className="h-3 w-3 text-text-muted" />
+                            {stop.name}
+                          </span>
+                          {index < arr.length - 1 && (
+                            <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Trajets porte-à-porte (trip_type="users") : liste nommée des
+                passagers, déjà incluse dans le fetch calendrier (Preload
+                "Passengers.User" côté backend) — pas besoin d'un fetchById
+                comme pour l'itinéraire d'une ligne. */}
+            {selectedTrip.trip_type === "users" && selectedTrip.passengers && selectedTrip.passengers.length > 0 && (
+              <div className="border-t border-border pt-2 mt-1">
+                <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-text-muted">
+                  <Users className="h-3.5 w-3.5" />
+                  Passagers ({selectedTrip.passengers.length})
+                </p>
+                <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                  {selectedTrip.passengers.map((passenger) => (
+                    <div
+                      key={passenger.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CircleDot
+                          className="h-3.5 w-3.5 shrink-0"
+                          style={{ color: PASSENGER_STATUS_COLOR[passenger.status] }}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm text-text-primary truncate">
+                            {passenger.first_name} {passenger.last_name}
+                          </p>
+                          {passenger.home_address && (
+                            <p className="truncate text-[11px] text-text-muted">{passenger.home_address}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        <span className="whitespace-nowrap text-[11px] text-text-muted">
+                          {PASSENGER_STATUS_LABEL[passenger.status]}
+                        </span>
+                        {passenger.status === "picked_up" && passenger.picked_up_at && (
+                          <span className="whitespace-nowrap text-[11px] font-medium text-text-primary">
+                            {formatTime(passenger.picked_up_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <button
               type="button"
@@ -497,7 +651,7 @@ export function TourneesView() {
         ))}
       </div>
 
-      <div className="rounded-md border border-border bg-card p-3">
+      <div className="relative rounded-md border border-border bg-card p-3">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -519,6 +673,16 @@ export function TourneesView() {
           eventDisplay="block"
           dayMaxEvents={3}
         />
+
+        {/* Overlay pendant un rechargement (changement de plage, ou refresh
+            après création/suppression/modif) : évite que l'utilisateur voie
+            les tournées apparaître/disparaître avec un léger lag — le
+            calendrier reste visible en dessous (pas de flash blanc). */}
+        {isCalendarLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-white/70">
+            <Loader2 className="h-6 w-6 animate-spin text-brand" />
+          </div>
+        )}
       </div>
 
       {/* Grise et désactive visuellement les jours déjà passés — on ne peut
