@@ -9,6 +9,7 @@ import { apiService } from "@/services/apiService"
 import { decodePolyline } from "@/lib/liveTrackingFormat"
 import { useTripStore, type LineDetail } from "@/store/useTripStore"
 import { useSelectedBusRoute } from "../../hooks/useSelectedBusRoute"
+import { usePedestrianPositionsStore } from "@/store/usePedestrianPositionsStore"
 
 interface VehicleHistoryResponse {
   vehicle_id: string
@@ -56,6 +57,8 @@ function nearestPointOnPath(point: [number, number], path: [number, number][]): 
 
 export function LiveTrackingMap() {
   const buses = useLiveBuses()
+  const pedestrianPositions = usePedestrianPositionsStore((state) => state.positions)
+  const pedestrians = useMemo(() => Object.values(pedestrianPositions), [pedestrianPositions])
   const [selectedBusId, setSelectedBusId] = useState<string | null>(null)
   const [flyToSignal, setFlyToSignal] = useState(0)
   const [followVehicleId, setFollowVehicleId] = useState<string | null>(null)
@@ -178,12 +181,13 @@ export function LiveTrackingMap() {
             <h2 className="text-md font-semibold text-text-primary">Suivi en direct</h2>
             <span className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-muted">
               <Radio className="h-3 w-3" />
-              {onlineCount} en ligne · {buses.length} au total
+              {onlineCount} bus en ligne · {pedestrians.length} piéton{pedestrians.length === 1 ? '' : 's'} partagé{pedestrians.length === 1 ? '' : 's'}
             </span>
           </div>
 
           <LiveTrackingToolbar
             buses={buses}
+            pedestrians={pedestrians}
             selectedBusId={selectedBusId}
             onSelectBus={setSelectedBusId}
             showPaths={showPaths}

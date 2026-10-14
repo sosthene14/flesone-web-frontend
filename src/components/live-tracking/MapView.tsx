@@ -3,6 +3,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { Maximize, Minimize, Navigation } from "lucide-react"
 import { LiveBus } from "../../types/types"
+import type { PedestrianPositionPayload } from "@/store/usePedestrianPositionsStore"
 
 // Une seule carte, comme la landing : style "Liberty" (openfreemap) — la 3D
 // (bâtiments extrudés + inclinaison) n'est activée QUE quand on suit un
@@ -31,6 +32,7 @@ interface HistoryPath {
 
 interface MapViewProps {
   buses: LiveBus[]
+  pedestrians?: PedestrianPositionPayload[]
   selectedBusId: string | null
   onSelectBus: (id: string) => void
   // Incrémenté à chaque clic sur "Voir la dernière position" — force un
@@ -184,6 +186,7 @@ interface CameraTransition {
 
 export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView({
   buses,
+  pedestrians = [],
   selectedBusId,
   onSelectBus,
   flyToSignal,
@@ -201,6 +204,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   const wrapperRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const busMarkersRef = useRef<Record<string, maplibregl.Marker>>({})
+  const pedestrianMarkersRef = useRef<Record<string, maplibregl.Marker>>({})
   const busPathSourceIds = useRef<Set<string>>(new Set())
   const historyMarkerRef = useRef<maplibregl.Marker | null>(null)
   const wasFollowingRef = useRef(false)
@@ -488,6 +492,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         // Première apparition : pas d'interpolation à faire, le bus "est" déjà là.
         const now = performance.now()
         const initialHeading = bus.heading ?? 0
+        const initialImg = el.querySelector<HTMLImageElement>(".live-bus-marker-img")
+        if (initialImg) initialImg.style.transform = `rotate(${initialHeading}deg)`
         animRef.current[bus.id] = {
           current: lastPoint,
           from: lastPoint,
@@ -504,19 +510,24 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         // PAS de marker.setLngLat ici : on se contente de mettre à jour la
         // cible, c'est la boucle rAF qui fera glisser le marqueur vers elle.
         const st = animRef.current[bus.id]
-        if (st && (st.to[0] !== lastPoint[0] || st.to[1] !== lastPoint[1])) {
-          const now = performance.now()
-          st.from = st.current
-          st.to = lastPoint
-          // Durée = temps réel écoulé depuis la position précédente (bornée)
-          // -> le bus arrive pile quand la prochaine position tombe.
-          const elapsedSincePrevious = now - st.lastTargetTime
-          st.duration = Math.min(Math.max(elapsedSincePrevious, MIN_ANIM_DURATION_MS), MAX_ANIM_DURATION_MS)
-          st.start = now
-          st.lastTargetTime = now
-          st.headingFrom = st.headingCurrent
-          st.headingTo = bus.heading ?? st.headingTo
-          st.settled = false
+        if (st) {
+          const nextHeading = bus.heading ?? st.headingTo
+          const positionChanged = st.to[0] !== lastPoint[0] || st.to[1] !== lastPoint[1]
+          const headingChanged = st.headingTo !== nextHeading
+          if (positionChanged || headingChanged) {
+            const now = performance.now()
+            st.from = st.current
+            st.to = lastPoint
+            // Durée = temps réel écoulé depuis la position précédente (bornée)
+            // -> le bus arrive pile quand la prochaine position tombe.
+            const elapsedSincePrevious = now - st.lastTargetTime
+            st.duration = Math.min(Math.max(elapsedSincePrevious, MIN_ANIM_DURATION_MS), MAX_ANIM_DURATION_MS)
+            st.start = now
+            st.lastTargetTime = now
+            st.headingFrom = st.headingCurrent
+            st.headingTo = nextHeading
+            st.settled = false
+          }
         }
       }
 
@@ -542,6 +553,39 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       }
     })
   }, [buses, selectedBusId, onSelectBus, followVehicleId, styleReady, showPaths, showTooltips, tooltipMode])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !styleReady) return
+
+    const seen = new Set<string>()
+    pedestrians.forEach((pedestrian) => {
+      seen.add(pedestrian.user_id)
+      const coordinates: [number, number] = [pedestrian.longitude, pedestrian.latitude]
+      let marker = pedestrianMarkersRef.current[pedestrian.user_id]
+      if (!marker) {
+        const element = document.createElement("div")
+        element.className = "live-pedestrian-marker"
+        const dot = document.createElement("div")
+        dot.className = "live-pedestrian-dot"
+        const tooltip = document.createElement("div")
+        tooltip.className = "live-pedestrian-tooltip"
+        tooltip.textContent = `Piéton · ${pedestrian.user_id.slice(0, 6)}`
+        element.append(dot, tooltip)
+        marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(coordinates).addTo(map)
+        pedestrianMarkersRef.current[pedestrian.user_id] = marker
+      } else {
+        marker.setLngLat(coordinates)
+      }
+    })
+
+    Object.entries(pedestrianMarkersRef.current).forEach(([userId, marker]) => {
+      if (!seen.has(userId)) {
+        marker.remove()
+        delete pedestrianMarkersRef.current[userId]
+      }
+    })
+  }, [pedestrians, styleReady])
 
   // ---------------------------------------------------------------------------
   // Bascule "Masquer les tracés" : agit immédiatement sur les layers déjà
@@ -1007,6 +1051,40 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           justify-content: center;
           cursor: pointer;
         }
+        .live-pedestrian-marker {
+          position: relative;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .live-pedestrian-dot {
+          width: 15px;
+          height: 15px;
+          border: 3px solid white;
+          border-radius: 50%;
+          background: #0f9d8a;
+          box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+        }
+        .live-pedestrian-tooltip {
+          position: absolute;
+          left: 50%;
+          top: -5px;
+          transform: translate(-50%, -100%);
+          white-space: nowrap;
+          background: var(--card, #fff);
+          border: 1px solid var(--border, #e5e5e8);
+          border-radius: 6px;
+          padding: 3px 8px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-primary, #16161a);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+          opacity: 0;
+          pointer-events: none;
+        }
+        .live-pedestrian-marker:hover .live-pedestrian-tooltip { opacity: 1; }
         .live-bus-marker-img {
           width: 12px;
           height: 33px;

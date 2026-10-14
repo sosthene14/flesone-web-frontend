@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { RequiredStar } from "@/components/ui/RequiredStar";
 import { useUserStore, type User, type UserRole } from "@/store/userStore";
+import { useAuthStore } from "@/store/useAuthStore";
 import { useVehicleStore } from "@/store/useVehicleStore";
 import { ROLE_LABELS } from "./userRoleConfig";
 
@@ -36,8 +37,10 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 
 export function UserFormDialog({ open, onOpenChange, initialData, onSuccess }: UserFormDialogProps) {
   const { createUser, updateUser, isLoading } = useUserStore();
+  const connectedUserId = useAuthStore((state) => state.user?.id);
   const { vehicles } = useVehicleStore();
   const isEditing = !!initialData;
+  const isEditingOwnAccount = isEditing && initialData?.id === connectedUserId;
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -93,7 +96,7 @@ export function UserFormDialog({ open, onOpenChange, initialData, onSuccess }: U
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           phone: phone.trim(),
-          role,
+          ...(!isEditingOwnAccount ? { role } : {}),
           ...(email.trim() ? { email: email.trim() } : {}),
           ...(role === "driver" ? { vehicle_id: vehicleId || null } : {}),
         });
@@ -131,10 +134,15 @@ export function UserFormDialog({ open, onOpenChange, initialData, onSuccess }: U
             <Combobox
               value={role}
               onChange={(v) => setRole(v as UserRole)}
-              disabled={isLoading}
+              disabled={isLoading || isEditingOwnAccount}
               placeholder="Choisir un rôle"
               options={ROLE_OPTIONS}
             />
+            {isEditingOwnAccount && (
+              <p className="text-[12px] text-text-muted">
+                Vous ne pouvez pas modifier le rôle de votre propre compte.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

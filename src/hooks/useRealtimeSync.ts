@@ -14,6 +14,7 @@ import { useTripStore, type TripStatus } from '@/store/useTripStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useVehiclePositionsStore, type VehiclePathPayload } from '@/store/useVehiclePositionsStore';
 import { useStatsStore } from '@/store/useStatsStore';
+import { usePedestrianPositionsStore, type PedestrianPositionPayload } from '@/store/usePedestrianPositionsStore';
 
 const SEVERITY_LABEL: Record<Alert['severity'], string> = {
   info: 'Info',
@@ -36,6 +37,10 @@ export function useRealtimeSync() {
   const removeTripRealtime = useTripStore((s) => s.removeTripRealtime);
   const fetchTrips = useTripStore((s) => s.fetchAll);
   const patchVehiclePath = useVehiclePositionsStore((s) => s.patchVehiclePath);
+  const updatePedestrianPosition = usePedestrianPositionsStore((s) => s.updatePosition);
+  const removePedestrianPosition = usePedestrianPositionsStore((s) => s.removePosition);
+  const fetchPedestrianSnapshot = usePedestrianPositionsStore((s) => s.fetchLiveSnapshot);
+  const prunePedestrianPositions = usePedestrianPositionsStore((s) => s.pruneStalePositions);
   const fetchDashboardStats = useStatsStore((s) => s.fetchDashboardStats);
   const organizationId = useAuthStore((s) => s.user?.organization_id);
 
@@ -43,6 +48,10 @@ export function useRealtimeSync() {
     if (!isAuthenticated) return;
 
     realtimeService.connect();
+    void fetchPedestrianSnapshot().catch((error) => {
+      console.error('Impossible de charger les positions piétonnes partagées:', error);
+    });
+    const pedestrianExpiryTimer = setInterval(prunePedestrianPositions, 15000);
 
     // "Véhicules en route" (voir StatCards) dépend de Vehicle.Status, qui
     // change à chaque démarrage/fin/annulation de trajet (voir
@@ -90,16 +99,27 @@ export function useRealtimeSync() {
         patchVehiclePath({ ...data, isOnline: true });
       },
     );
+    const offPedestrianPosition = realtimeService.on(
+      'pedestrian.position.updated',
+      (data: PedestrianPositionPayload) => updatePedestrianPosition(data),
+    );
+    const offPedestrianStopped = realtimeService.on(
+      'pedestrian.position.stopped',
+      (data: { user_id: string }) => removePedestrianPosition(data.user_id),
+    );
 
     return () => {
+      clearInterval(pedestrianExpiryTimer);
       offAlert();
       offTrip();
       offTripCreated();
       offTripDeleted();
       offVehiclePath();
+      offPedestrianPosition();
+      offPedestrianStopped();
       // On ne ferme pas la connexion ici : ce hook peut être monté/démonté
       // par plusieurs écrans du dashboard, la connexion doit survivre à la
       // navigation. Elle n'est coupée qu'au logout (voir useAuthStore.logout).
     };
-  }, [isAuthenticated, addAlertRealtime, patchTripRealtime, removeTripRealtime, fetchTrips, patchVehiclePath, fetchDashboardStats, organizationId]);
+  }, [isAuthenticated, addAlertRealtime, patchTripRealtime, removeTripRealtime, fetchTrips, patchVehiclePath, fetchDashboardStats, organizationId, updatePedestrianPosition, removePedestrianPosition, fetchPedestrianSnapshot, prunePedestrianPositions]);
 }
