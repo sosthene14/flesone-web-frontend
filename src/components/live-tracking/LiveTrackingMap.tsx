@@ -19,6 +19,7 @@ interface VehicleHistoryResponse {
   // (liveTrackingFormat.ts). On la décode une fois à la réception, pas à
   // chaque frame de lecture.
   polyline: string
+  segments?: { coordinates: [number, number][]; estimated: boolean }[]
   point_count: number
   first_seen?: string
   last_seen?: string
@@ -121,8 +122,12 @@ export function LiveTrackingMap() {
       const data = body?.data ?? null
       setHistoryData(data)
 
-      if (data?.polyline) {
-        const path = decodePolyline(data.polyline)
+      const path = data?.segments?.length
+        ? data.segments.flatMap((segment) => segment.coordinates)
+        : data?.polyline
+          ? decodePolyline(data.polyline)
+          : []
+      if (path.length > 0) {
         const nextDay = new Date(historyDate + "T00:00:00")
         nextDay.setDate(nextDay.getDate() + 1)
 
@@ -169,8 +174,15 @@ export function LiveTrackingMap() {
   // chaque tick GPS live, et remettrait le marqueur au départ en boucle
   // pendant la lecture.
   const historyPath = useMemo(() => {
-    if (!historyData || historyData.vehicle_id !== selectedBusId || !historyData.polyline) return null
-    return { vehicleId: historyData.vehicle_id, coordinates: decodePolyline(historyData.polyline) }
+    if (!historyData || historyData.vehicle_id !== selectedBusId) return null
+    const segments = historyData.segments?.length
+      ? historyData.segments
+      : historyData.polyline
+        ? [{ coordinates: decodePolyline(historyData.polyline), estimated: false }]
+        : []
+    const coordinates = segments.flatMap((segment) => segment.coordinates)
+    if (coordinates.length === 0) return null
+    return { vehicleId: historyData.vehicle_id, coordinates, segments }
   }, [historyData, selectedBusId])
 
   return (

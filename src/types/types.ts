@@ -60,6 +60,7 @@ export interface LiveBus {
     coordinates: [number, number] // [lng, lat]
     done: boolean
   }[]
+  pathSegments?: { coordinates: [number, number][]; estimated: boolean }[]
 }
 
 export type UserRole = "chauffeur" | "admin" | "user"

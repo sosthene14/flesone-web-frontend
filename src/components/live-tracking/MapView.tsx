@@ -28,6 +28,7 @@ const HEADING_LOOKAHEAD_FACTOR = 1.6
 interface HistoryPath {
   vehicleId: string
   coordinates: [number, number][]
+  segments: { coordinates: [number, number][]; estimated: boolean }[]
 }
 
 interface MapViewProps {
@@ -81,6 +82,20 @@ export interface HistoryPlaybackState {
   playing: boolean
   // 0..1 — position actuelle le long du trajet.
   progress: number
+  speed: number
+}
+
+interface HistoryPlayerSegment {
+  coordinates: [number, number][]
+  cumulative: number[]
+  total: number
+}
+
+interface HistoryPlayer {
+  segments: HistoryPlayerSegment[]
+  total: number
+  progress: number
+  playing: boolean
   speed: number
 }
 
@@ -211,14 +226,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   // Lecteur d'historique — voir la boucle rAF dédiée plus bas, qui est la
   // seule à lire/écrire cet état (l'API impérative exposée via `ref` ne fait
   // que le modifier, elle ne redéclenche jamais de rendu React).
-  const historyPlayerRef = useRef<{
-    coords: [number, number][]
-    cumulative: number[]
-    total: number
-    progress: number
-    playing: boolean
-    speed: number
-  } | null>(null)
+  const historyPlayerRef = useRef<HistoryPlayer | null>(null)
   const onHistoryPlaybackChangeRef = useRef(onHistoryPlaybackChange)
   onHistoryPlaybackChangeRef.current = onHistoryPlaybackChange
   // État d'animation par véhicule (position + cap interpolés) — voir la
@@ -457,22 +465,42 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       if (!isOffline) {
         const sourceId = `bus-path-${bus.id}`
         const layerId = `bus-path-line-${bus.id}`
+        const estimatedLayerId = `bus-path-estimated-line-${bus.id}`
+        const pathSegments = bus.pathSegments?.length
+          ? bus.pathSegments
+          : [{ coordinates: bus.path, estimated: false }]
+        const data: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: pathSegments
+            .filter((segment) => segment.coordinates.length >= 2)
+            .map((segment) => ({
+              type: "Feature",
+              properties: { estimated: segment.estimated },
+              geometry: { type: "LineString", coordinates: segment.coordinates },
+            })),
+        }
         if (!busPathSourceIds.current.has(sourceId) && !map.getSource(sourceId)) {
-          map.addSource(sourceId, {
-            type: "geojson",
-            data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: bus.path } },
-          })
+          map.addSource(sourceId, { type: "geojson", data })
           map.addLayer({
             id: layerId,
             type: "line",
             source: sourceId,
+            filter: ["==", ["get", "estimated"], false],
             layout: { "line-join": "round", "line-cap": "round", visibility: showPaths ? "visible" : "none" },
             paint: { "line-color": pathColor, "line-width": 3, "line-opacity": 0.85 },
+          })
+          map.addLayer({
+            id: estimatedLayerId,
+            type: "line",
+            source: sourceId,
+            filter: ["==", ["get", "estimated"], true],
+            layout: { "line-join": "round", "line-cap": "round", visibility: showPaths ? "visible" : "none" },
+            paint: { "line-color": "#dc2626", "line-width": 3, "line-dasharray": [1, 1.5], "line-opacity": 0.9 },
           })
           busPathSourceIds.current.add(sourceId)
         } else {
           const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
-          source?.setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: bus.path } })
+          source?.setData(data)
           // La couleur peut changer après coup (ex: detail.line.color arrive
           // un instant après la création du tracé, voir useLiveBuses.ts) —
           // on la resynchronise à chaque passage, coût négligeable.
@@ -596,8 +624,12 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     if (!map || !styleReady) return
     busPathSourceIds.current.forEach((sourceId) => {
       const layerId = sourceId.replace("bus-path-", "bus-path-line-")
+      const estimatedLayerId = sourceId.replace("bus-path-", "bus-path-estimated-line-")
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", showPaths ? "visible" : "none")
+      }
+      if (map.getLayer(estimatedLayerId)) {
+        map.setLayoutProperty(estimatedLayerId, "visibility", showPaths ? "visible" : "none")
       }
     })
   }, [showPaths, styleReady])
@@ -720,6 +752,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
   // masqué par "Masquer les tracés") + marqueur posé sur le premier point.
   // ---------------------------------------------------------------------------
   const historyLayerId = "history-path-line"
+  const historyEstimatedLayerId = "history-path-estimated-line"
   const historySourceId = "history-path"
 
   useEffect(() => {
@@ -728,16 +761,22 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
     if (!historyPath || historyPath.coordinates.length === 0) {
       if (map.getLayer(historyLayerId)) map.removeLayer(historyLayerId)
+      if (map.getLayer(historyEstimatedLayerId)) map.removeLayer(historyEstimatedLayerId)
       if (map.getSource(historySourceId)) map.removeSource(historySourceId)
       historyMarkerRef.current?.remove()
       historyMarkerRef.current = null
       return
     }
 
-    const data: GeoJSON.Feature = {
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: historyPath.coordinates },
+    const data: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: historyPath.segments
+        .filter((segment) => segment.coordinates.length >= 2)
+        .map((segment) => ({
+          type: "Feature",
+          properties: { estimated: segment.estimated },
+          geometry: { type: "LineString", coordinates: segment.coordinates },
+        })),
     }
 
     if (map.getSource(historySourceId)) {
@@ -748,8 +787,17 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         id: historyLayerId,
         type: "line",
         source: historySourceId,
+        filter: ["==", ["get", "estimated"], false],
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#d97706", "line-width": 3, "line-dasharray": [2, 1.5], "line-opacity": 0.9 },
+      })
+      map.addLayer({
+        id: historyEstimatedLayerId,
+        type: "line",
+        source: historySourceId,
+        filter: ["==", ["get", "estimated"], true],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#dc2626", "line-width": 3, "line-dasharray": [1, 1.5], "line-opacity": 0.95 },
       })
     }
 
@@ -836,15 +884,27 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       return
     }
 
-    const coords = historyPath.coordinates
-    const cumulative = [0]
-    for (let i = 1; i < coords.length; i++) {
-      cumulative.push(cumulative[i - 1] + haversineMeters(coords[i - 1], coords[i]))
+    const segments = historyPath.segments
+      .filter((segment) => segment.coordinates.length >= 2)
+      .map((segment) => {
+        const cumulative = [0]
+        for (let i = 1; i < segment.coordinates.length; i++) {
+          cumulative.push(cumulative[i - 1] + haversineMeters(segment.coordinates[i - 1], segment.coordinates[i]))
+        }
+        return {
+          coordinates: segment.coordinates,
+          cumulative,
+          total: cumulative[cumulative.length - 1],
+        }
+      })
+    if (segments.length === 0) {
+      historyPlayerRef.current = null
+      onHistoryPlaybackChangeRef.current?.({ playing: false, progress: 0, speed: 1 })
+      return
     }
     historyPlayerRef.current = {
-      coords,
-      cumulative,
-      total: cumulative[cumulative.length - 1],
+      segments,
+      total: segments.reduce((total, segment) => total + segment.total, 0),
       progress: 0,
       playing: false,
       speed: 1,
@@ -852,18 +912,33 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
     onHistoryPlaybackChangeRef.current?.({ playing: false, progress: 0, speed: 1 })
   }, [historyPath])
 
-  function posAtDistance(coords: [number, number][], cumulative: number[], total: number, dist: number): [number, number] {
-    if (dist <= 0) return coords[0]
-    if (dist >= total) return coords[coords.length - 1]
-    for (let i = 1; i < cumulative.length; i++) {
-      if (cumulative[i] >= dist) {
-        const segStart = cumulative[i - 1]
-        const segEnd = cumulative[i]
-        const t = segEnd > segStart ? (dist - segStart) / (segEnd - segStart) : 0
-        return [lerp(coords[i - 1][0], coords[i][0], t), lerp(coords[i - 1][1], coords[i][1], t)]
+  function posAtDistance(player: HistoryPlayer, dist: number): [number, number] | null {
+    const firstSegment = player.segments[0]
+    const lastSegment = player.segments[player.segments.length - 1]
+    if (!firstSegment || !lastSegment) return null
+    if (dist <= 0 || player.total <= 0) return firstSegment.coordinates[0]
+    if (dist >= player.total) return lastSegment.coordinates[lastSegment.coordinates.length - 1]
+
+    let segmentStartDistance = 0
+    for (const segment of player.segments) {
+      const segmentEndDistance = segmentStartDistance + segment.total
+      if (segment.total > 0 && dist <= segmentEndDistance) {
+        const segmentDistance = dist - segmentStartDistance
+        for (let i = 1; i < segment.cumulative.length; i++) {
+          if (segment.cumulative[i] >= segmentDistance) {
+            const start = segment.cumulative[i - 1]
+            const end = segment.cumulative[i]
+            const t = end > start ? (segmentDistance - start) / (end - start) : 0
+            return [
+              lerp(segment.coordinates[i - 1][0], segment.coordinates[i][0], t),
+              lerp(segment.coordinates[i - 1][1], segment.coordinates[i][1], t),
+            ]
+          }
+        }
       }
+      segmentStartDistance = segmentEndDistance
     }
-    return coords[coords.length - 1]
+    return lastSegment.coordinates[lastSegment.coordinates.length - 1]
   }
 
 
@@ -882,8 +957,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
           player.progress = Math.min(player.progress + (player.speed * dt) / HISTORY_BASE_DURATION_MS, 1)
           if (player.progress >= 1) player.playing = false
         }
-        const pos = posAtDistance(player.coords, player.cumulative, player.total, player.progress * player.total)
-        historyMarkerRef.current?.setLngLat(pos)
+        const pos = posAtDistance(player, player.progress * player.total)
+        if (pos) historyMarkerRef.current?.setLngLat(pos)
 
 
         if (now - lastReported > 100) {
@@ -942,16 +1017,16 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       const player = historyPlayerRef.current
       if (!player) return
       player.progress = Math.min(Math.max(fraction, 0), 1)
-      const pos = posAtDistance(player.coords, player.cumulative, player.total, player.progress * player.total)
-      historyMarkerRef.current?.setLngLat(pos)
+      const pos = posAtDistance(player, player.progress * player.total)
+      if (pos) historyMarkerRef.current?.setLngLat(pos)
       reportPlaybackNow()
     },
     step(delta) {
       const player = historyPlayerRef.current
       if (!player) return
       player.progress = Math.min(Math.max(player.progress + delta, 0), 1)
-      const pos = posAtDistance(player.coords, player.cumulative, player.total, player.progress * player.total)
-      historyMarkerRef.current?.setLngLat(pos)
+      const pos = posAtDistance(player, player.progress * player.total)
+      if (pos) historyMarkerRef.current?.setLngLat(pos)
       reportPlaybackNow()
     },
   }))

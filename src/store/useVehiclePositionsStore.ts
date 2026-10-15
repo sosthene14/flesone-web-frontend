@@ -15,6 +15,7 @@ import { apiService } from '@/services/apiService';
 export interface VehiclePathPayload {
   vehicle_id: string;
   coordinates: [number, number][];
+  segments?: { coordinates: [number, number][]; estimated: boolean }[];
   // Vitesse en m/s (valeur brute GPS renvoyée par expo-location côté mobile,
   // voir hooks/use-position-broadcast.ts) — PAS déjà en km/h.
   speed: number;
@@ -78,6 +79,7 @@ export const useVehiclePositionsStore = create<VehiclePositionsState>((set) => (
           positions[row.vehicle_id] = {
             vehicle_id: row.vehicle_id,
             coordinates: [[row.longitude, row.latitude]],
+            segments: [{ coordinates: [[row.longitude, row.latitude]], estimated: false }],
             speed: row.speed,
             heading: row.heading,
             timestamp: row.timestamp,

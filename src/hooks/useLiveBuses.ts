@@ -210,6 +210,7 @@ export function useLiveBuses(): LiveBus[] {
         fuelType: vehicle?.fuel_type ?? 'diesel',
         mileageKm: vehicle?.mileage ?? 0,
         path: pos.coordinates,
+        pathSegments: pos.segments,
         speedKmh: Math.round(pos.speed * 3.6),
         heading: pos.heading >= 0 ? pos.heading : null,
         lastUpdateAt: pos.timestamp,
